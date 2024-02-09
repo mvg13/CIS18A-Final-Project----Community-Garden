@@ -1,0 +1,539 @@
+/* CIS 18-A Final Project - Matthew Godinez and Allyson Lopez
+Community Garden Program -
+This program will allow the user to register their information,
+make a donation, schedule an appointment to visit and volunteer.
+*/
+
+// Import necessary packages
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Scanner;
+
+// Interface for donation options
+interface DonationOption {
+    String getOption();
+    double getAmount();
+}
+
+// Interface for community member's information
+interface CommunityMember {
+    void displayCommunityInfo();
+    String getCommunityInfo();
+}
+
+// Interface for volunteer options
+interface Volunteer {
+    void scheduleVolTime();
+}
+
+// Main class for the Community Garden Program
+public class CommunityGarden {
+    public static final int MAX_USERS = 100;
+    public static final int MAX_APPOINTMENTS = 100;
+
+    public static User[] users = new User[MAX_USERS];
+    public static Appointment[] appointments = new Appointment[MAX_APPOINTMENTS];
+    public static double[][] donations = new double[MAX_USERS][4]; // Each user can make 4 types of donations
+    public static int[][] volunteerHours = new int[MAX_USERS][MAX_APPOINTMENTS]; // Volunteer hours for each user for each appointment
+
+    private static int userCount = 0;
+    private static int appointmentCount = 0;
+    private static User currentUser; // Variable to store the current user
+
+    // Method to handle the donation process and displaying the amount
+    private static void makeDonation(Scanner scanner) {
+		if (currentUser != null) {
+			// Create donation options
+			DonationOption[] donationOptions = {
+					new MoneyDonation("Monetary", 0.0),
+					new SeedDonation("Seeds", 0.0),
+					new ToolDonation("Tools", 0.0),
+					new FertilizerDonation("Fertilizer", 25.0)
+			};
+
+			// Display donation options
+			System.out.println("\nDonation Options:");
+			for (int i = 0; i < donationOptions.length; i++) {
+				System.out.println((i + 1) + ". " + donationOptions[i].getOption() + ": $" + donations[getUserIndex(currentUser)][i]);
+			}
+
+			// Prompt for donation choice
+			int donationChoice;
+			while (true) {
+				System.out.print("Enter the number corresponding to the donation option: ");
+				String input = scanner.nextLine();
+				try {
+					donationChoice = Integer.parseInt(input);
+					if (donationChoice >= 1 && donationChoice <= donationOptions.length) {
+						break; // Valid input, exit loop
+					} else {
+						System.out.println("Invalid donation choice. Please enter a valid number.");
+					}
+				} catch (NumberFormatException e) {
+					System.out.println("Invalid input. Please enter a number.");
+				}
+			}
+
+			// Allow the user to input the donation amount
+			System.out.print("Enter donation amount: ");
+			double donationAmount = scanner.nextDouble();
+
+			// Update the selected donation option with the new amount
+			donations[getUserIndex(currentUser)][donationChoice - 1] += donationAmount;
+
+			System.out.println("Thank you for your donation!");
+		} else {
+			System.out.println("No user is currently logged in.");
+		}
+	}
+
+    // Method for handling volunteer scheduling process
+	private static void scheduleVolunteer(Scanner scanner) {
+		// Check if a user is currently logged in
+		if (currentUser == null) {
+			System.out.println("No user is currently logged in.");
+			return;
+		}
+
+		// Get the index of the current user
+		int userIndex = getUserIndex(currentUser);
+
+		// Check if the current user is registered
+		if (userIndex == -1) {
+			System.out.println("Please register the user first.");
+			return;
+		}
+
+		// Check if the maximum user limit has been reached
+		if (userIndex >= MAX_USERS) {
+			System.out.println("Maximum user limit reached.");
+			return;
+		}
+
+		// Check if the user exists
+		if (userIndex >= userCount) {
+			System.out.println("User not found.");
+			return;
+		}
+
+		// Check if the maximum appointment limit has been reached
+		if (appointmentCount >= MAX_APPOINTMENTS) {
+			System.out.println("Maximum appointment limit reached.");
+			return;
+		}
+
+		// Prompt the user to select an appointment date
+		System.out.println("Select an appointment date (MM/dd/yyyy):");
+		String dateStr = scanner.nextLine();
+
+		// Create a SimpleDateFormat object to parse the date input
+		SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy");
+		try {
+			// Parse the appointment date string into a Date object
+			Date appointmentDate = dateFormat.parse(dateStr);
+
+			// Create a new VolunteerAppointment object with the parsed appointment date
+			VolunteerAppointment volunteerAppointment = new VolunteerAppointment(appointmentDate);
+
+			// Schedule volunteer time for the appointment
+			volunteerAppointment.scheduleVolTime();
+
+			// Update volunteer hours for the current user and appointment count
+			volunteerHours[userIndex][appointmentCount] = volunteerAppointment.getVolunteerHours();
+			appointments[appointmentCount++] = volunteerAppointment;
+
+			// Set the appointment for the current user
+			currentUser.setAppointment(volunteerAppointment);
+		} catch (ParseException e) {
+			// Handle the ParseException if the date format is invalid
+			System.out.println("Invalid date format. Please enter the date in MM/dd/yyyy format.");
+		}
+	}
+
+    // Method to write user, appointment, donation amounts, and volunteer hours data to a text file
+    private static void writeDataToFile() {
+        try {
+            FileWriter writer = new FileWriter("community_data.txt");
+            writer.write("Community Member Information:\n");
+            for (int i = 0; i < userCount; i++) {
+                writer.write(users[i].getCommunityInfo() + "\n");
+                writer.write("  Donation Amounts:\n");
+                writer.write("    Monetary: $" + donations[i][0] + "\n");
+                writer.write("    Seeds: $" + donations[i][1] + "\n");
+                writer.write("    Tools: $" + donations[i][2] + "\n");
+                writer.write("    Fertilizer: $" + donations[i][3] + "\n");
+                writer.write("  Volunteer Hours: " + getTotalVolunteerHours(i) + " hours\n");
+                if (users[i].getAppointment() != null) {
+                    writer.write("  Appointment Information:\n");
+                    writer.write("Appointment Date: " + users[i].getAppointment().getScheduledApp() + "\n");
+                }
+                // Add an empty line after each user for readability
+                writer.write("\n");
+            }
+            writer.close();
+            System.out.println("Data has been written to community_data.txt");
+        } catch (IOException e) {
+            System.out.println("An error occurred while writing to the file.");
+            e.printStackTrace();
+        }
+    }
+
+    // Method to calculate total volunteer hours for the user at index 'index'
+    private static int getTotalVolunteerHours(int index) {
+        int totalHours = 0;
+        for (int i = 0; i < MAX_APPOINTMENTS; i++) {
+            totalHours += volunteerHours[index][i];
+        }
+        return totalHours;
+    }
+
+    // Method to get the index of the specified user in the users array
+    public static int getUserIndex(User user) {
+        for (int i = 0; i < userCount; i++) {
+            if (users[i] == user) {
+                return i;
+            }
+        }
+        return -1; // User not found
+    }
+
+    public static void main(String args[]) {
+        // Create a Scanner for user input
+        Scanner scanner = new Scanner(System.in);
+
+        // Welcome message
+		System.out.println();
+        System.out.println("Welcome to the Moreno Valley Community Garden!");
+        System.out.println("Moreno Valley residents can register, schedule an appointment to visit the garden, make a donation, or schedule to volunteer.");
+        System.out.println("The community garden operates 8:00 AM to 8:00 PM, Monday thru Friday and 8:00 AM to 5:00 PM on Saturday.");
+        System.out.println("During each appointment, patrons can pick fresh produce, fruits, and vegetables at this garden at no cost.");
+
+        // Menu options
+        int choice;
+        do {
+            System.out.println("\nMenu Options:");
+            System.out.println("1. Register");
+            System.out.println("2. Schedule an Appointment");
+			System.out.println("   to visit Garden");
+            System.out.println("3. Schedule to Volunteer");
+            System.out.println("4. Make a Donation");
+            System.out.println("5. Display Community Member Information");
+            System.out.println("6. Write Data to File");
+            System.out.println("7. Exit");
+
+            System.out.print("Enter your choice (1-7): ");
+            choice = scanner.nextInt();
+
+            // Consume newline character
+            scanner.nextLine();  // Add this line to consume the newline character
+
+            // Switch statement to handle menu choices
+			System.out.println();
+            switch (choice) {
+                case 1:
+                    // Register
+                    if (userCount < MAX_USERS) {
+                        User user = new User();
+                        if (user.register(scanner)) {
+                            users[userCount++] = user;
+                            currentUser = user; // Set current user after registration
+                        }
+                    } else {
+                        System.out.println("Maximum user limit reached.");
+                    }
+                    break;
+                case 2:
+                    // Schedule an Appointment
+                    if (userCount > 0) {
+                        if (appointmentCount < MAX_APPOINTMENTS) {
+                            System.out.println("Select an appointment date (MM/dd/yyyy):");
+                            String dateStr = scanner.nextLine();
+                            SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy");
+                            try {
+                                Date appointmentDate = dateFormat.parse(dateStr);
+                                Appointment appointment = new Appointment(appointmentDate); // Pass the appointment date to the constructor
+                                appointments[appointmentCount++] = appointment;
+                                if (currentUser != null) {
+                                    currentUser.setAppointment(appointment); // Set appointment for current user
+                                }
+                            } catch (java.text.ParseException e) {
+                                System.out.println("Invalid date format. Please enter the date in MM/dd/yyyy format.");
+                            }
+                        } else {
+                            System.out.println("Maximum appointment limit reached.");
+                        }
+                    } else {
+                        System.out.println("Please register at least one user first.");
+                    }
+                    break;
+                case 3:
+                    // Schedule to Volunteer
+                    scheduleVolunteer(scanner);
+                    break;
+                case 4:
+                    // Make a Donation
+                    makeDonation(scanner);
+                    break;
+                case 5:
+                    // Display Community Member Information
+                    User.displayAllUsers();
+                    break;
+                case 6:
+                    // Write Data to File
+                    writeDataToFile();
+                    break;
+                case 7:
+                    // Exit
+                    System.out.println("Thank you for using the Moreno Valley Community Garden Program.");
+					System.out.println("Have a wonderful Day!");
+                    break;
+                default:
+                    System.out.println("Invalid choice. Please enter a number between 1 and 7.");
+            }
+        } while (choice != 7);
+    }
+}
+
+// Class representing a user and their registration details
+class User implements CommunityMember {
+    private String name;
+    private String userInfo;
+    private Appointment appointment;
+
+   // Static array to store all registered users
+	private static final List<User> allUsers = new ArrayList<>();
+
+	public boolean register(Scanner scanner) {
+		// Get valid user information
+		getValidUserInfo(scanner);
+
+		System.out.println("Thank you! Your registration was successful!");
+
+		// Add the user to the list of all registered users
+		allUsers.add(this);
+
+		return true;
+	} 
+	
+	// Method to get valid user information from the user
+	private void getValidUserInfo(Scanner scanner) {
+		boolean isValidName = false;
+		boolean isValidContactInfo = false;
+
+		do {
+			System.out.println("Enter your name:");
+			String nameInput = scanner.nextLine();
+			// Check if the input contains only letters
+			if (nameInput.matches("[a-zA-Z ]+")) {
+				isValidName = true;
+				this.name = nameInput;
+			} else {
+				System.out.println("Invalid input. Please enter your name using letters and spaces only.");
+			}
+		} while (!isValidName);
+
+		do {
+			System.out.println("Enter your contact information:");
+			String contactInput = scanner.nextLine();
+			// Check if the input matches the specified format
+			if (contactInput.matches("\\d{3}-\\d{3}-\\d{4}")) {
+				isValidContactInfo = true;
+				this.userInfo = contactInput;
+			} else {
+				System.out.println("Invalid input. Please enter your contact information in the format: 111-111-1111");
+			}
+		} while (!isValidContactInfo);
+	}
+
+    // Method for getting users appointment information
+    public Appointment getAppointment() {
+        return appointment;
+    }
+
+    // Method to set appointment
+    public void setAppointment(Appointment appointment) {
+        this.appointment = appointment;
+    }
+
+    // Method to display information about all registered users and their details
+    public static void displayAllUsers() {
+        for (User user : allUsers) {
+            user.displayCommunityInfo(); // Utilize the existing method to display detailed information
+            System.out.println(); // Add a new line for better readability
+        }
+    }
+
+    // Method from CommunityMember interface to display members info
+    @Override
+    public void displayCommunityInfo() {
+        System.out.println("Community member information:");
+        System.out.println("Name: " + name);
+        System.out.println("Contact Information: " + userInfo);
+        System.out.println("Donation Amounts:");
+        System.out.println("  Monetary: $" + CommunityGarden.donations[CommunityGarden.getUserIndex(this)][0]);
+        System.out.println("  Seeds: $" + CommunityGarden.donations[CommunityGarden.getUserIndex(this)][1]);
+        System.out.println("  Tools: $" + CommunityGarden.donations[CommunityGarden.getUserIndex(this)][2]);
+        System.out.println("  Fertilizer: $" + CommunityGarden.donations[CommunityGarden.getUserIndex(this)][3]);
+        System.out.println("Volunteer Hours: " + getTotalVolunteerHours() + " hours");
+        if (appointment != null) {
+            appointment.displayAppointmentInfo();
+        } else {
+            System.out.println("No appointment scheduled.");
+        }
+    }
+
+    // Method to calculate total volunteer hours for the user
+    private int getTotalVolunteerHours() {
+        int totalHours = 0;
+        for (int i = 0; i < CommunityGarden.MAX_APPOINTMENTS; i++) {
+            totalHours += CommunityGarden.volunteerHours[CommunityGarden.getUserIndex(this)][i];
+        }
+        return totalHours;
+    }
+
+    // Implement the getCommunityInfo method from the interface
+    @Override
+    public String getCommunityInfo() {
+        return "Name: " + name + ", Contact Information: " + userInfo;
+    }
+}
+
+// Class representing an appointment for a user
+class Appointment {
+    protected Date scheduleApp;
+
+    // Constructor to initialize scheduleApp with the provided date
+    public Appointment(Date scheduleApp) {
+        this.scheduleApp = scheduleApp;
+    }
+
+    // Method for the selected appointment date
+    public Date getScheduledApp() {
+        return scheduleApp;
+    }
+
+    // Method to get appointment information in a formatted string
+    public String getAppointmentInfo() {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy");
+        return "Appointment Date: " + dateFormat.format(scheduleApp);
+    }
+
+    // Method to display appointment information
+    public void displayAppointmentInfo() {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy");
+        System.out.println("Appointment Date: " + dateFormat.format(scheduleApp));
+    }
+}
+
+// Class representing a volunteer appointment for a user
+class VolunteerAppointment extends Appointment implements Volunteer {
+    private int volunteerHours;
+
+    // Constructor to initialize volunteer appointment with the provided date
+    public VolunteerAppointment(Date scheduleApp) {
+        super(scheduleApp);
+    }
+
+    // Method to schedule volunteer time
+    @Override
+    public void scheduleVolTime() {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.println("Select the number of hours you would like to volunteer for (max 5 hours per day): ");
+        volunteerHours = scanner.nextInt();
+
+        // Validate the volunteer hours
+        while (volunteerHours < 1 || volunteerHours > 5) {
+            System.out.println("Invalid input. Please enter a number between 1 and 5: ");
+            volunteerHours = scanner.nextInt();
+        }
+
+        System.out.println("Volunteer time scheduled for " + volunteerHours + " hours");
+    }
+
+    // Method to get the scheduled volunteer hours
+    public int getVolunteerHours() {
+        return volunteerHours;
+    }
+}
+
+// MoneyDonation class representing a monetary donation
+class MoneyDonation implements DonationOption {
+    private String option;
+    private double amount;
+
+    public MoneyDonation(String option, double amount) {
+        this.option = option;
+        this.amount = amount;
+    }
+
+    public String getOption() {
+        return option;
+    }
+
+    public double getAmount() {
+        return amount;
+    }
+}
+
+// SeedDonation class representing a seed donation
+class SeedDonation implements DonationOption {
+    private String option;
+    private double amount;
+
+    public SeedDonation(String option, double amount) {
+        this.option = option;
+        this.amount = amount;
+    }
+
+    public String getOption() {
+        return option;
+    }
+
+    public double getAmount() {
+        return amount;
+    }
+}
+
+// ToolDonation class representing a tool donation
+class ToolDonation implements DonationOption {
+    private String option;
+    private double amount;
+
+    public ToolDonation(String option, double amount) {
+        this.option = option;
+        this.amount = amount;
+    }
+
+    public String getOption() {
+        return option;
+    }
+
+    public double getAmount() {
+        return amount;
+    }
+}
+
+// FertilizerDonation class representing a fertilizer donation
+class FertilizerDonation implements DonationOption {
+    private String option;
+    private double amount;
+
+    public FertilizerDonation(String option, double amount) {
+        this.option = option;
+        this.amount = amount;
+    }
+
+    public String getOption() {
+        return option;
+    }
+
+    public double getAmount() {
+        return amount;
+    }
+}
